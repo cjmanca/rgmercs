@@ -96,6 +96,8 @@ end
 function Rotation.ExecEntry(caller, entry, targetId, resolvedActionMap, bAllowMem)
     local ret = false
 
+    if not bAllowMem then bAllowMem = entry.combatMem end
+
     if entry.type == nil then return false end -- bad data.
 
     local target = mq.TLO.Target

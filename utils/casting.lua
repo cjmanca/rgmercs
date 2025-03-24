@@ -941,8 +941,8 @@ function Casting.UseSpell(spellName, targetId, bAllowMem, bAllowDead, overrideWa
             return false
         end
 
-        if (Targeting.GetXTHaterCount() > 0 or not bAllowMem) and (not Casting.CastReady(spell) or not mq.TLO.Me.Gem(spellName)()) then
-            Logger.log_debug("\ayUseSpell(): \ayI tried to cast %s but it was not ready and we are in combat - moving on.",
+        if (not bAllowMem or Targeting.IHaveAggro(70)) and (not Casting.CastReady(spell) or not mq.TLO.Me.Gem(spellName)()) then
+            Logger.log_debug("\ayUseSpell(): \ayI tried to cast %s but we are in combat and it was not ready or not safe to mem - moving on.",
                 spellName)
             return false
         end

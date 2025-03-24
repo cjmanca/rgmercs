@@ -699,11 +699,13 @@ return {
                 return combat_state == "Downtime" and Casting.OkayToBuff()
             end,
         },
-        { --Summon pet even when buffs are off on emu
+        { --Summon pet even when buffs are off on emu (main pet class, will resummon in combat)
             name = 'PetSummon',
             targetId = function(self) return { mq.TLO.Me.ID(), } end,
             cond = function(self, combat_state)
-                return combat_state == "Downtime" and mq.TLO.Me.Pet.ID() == 0 and Casting.OkayToPetBuff() and Casting.AmIBuffable()
+                local downtime = combat_state == "Downtime" and Casting.OkayToPetBuff() and Casting.AmIBuffable()
+                local combat = combat_state == "Combat" and Config:GetSetting('DoPet')
+                return mq.TLO.Me.Pet.ID() == 0 and (combat or downtime)
             end,
         },
         { --Pet Buffs if we have one, timer because we don't need to constantly check this
@@ -985,13 +987,6 @@ return {
         },
         ['DPS'] = {
             {
-                name = "PetSpell",
-                type = "Spell",
-                cond = function(self, spell)
-                    return mq.TLO.Me.Pet.ID() == 0
-                end,
-            },
-            {
                 name = "Paragon of Spirit",
                 type = "AA",
                 cond = function(self, aaName)
@@ -1253,6 +1248,7 @@ return {
             {
                 name = "PetSpell",
                 type = "Spell",
+                combatMem = Config:GetSetting("CombatPetSummon"),
                 cond = function(self, spell)
                     return mq.TLO.Me.Pet.ID() == 0
                 end,

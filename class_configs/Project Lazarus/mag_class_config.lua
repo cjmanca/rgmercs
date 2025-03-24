@@ -827,7 +827,7 @@ _ClassConfig      = {
         },
         { --Pet Buffs if we have one, timer because we don't need to constantly check this. Timer lowered for mage due to high volume of actions
             name = 'PetBuff',
-            timer = 30,
+            timer = 10,
             targetId = function(self) return mq.TLO.Me.Pet.ID() > 0 and { mq.TLO.Me.Pet.ID(), } or {} end,
             cond = function(self, combat_state)
                 return combat_state == "Downtime" and mq.TLO.Me.Pet.ID() > 0 and Casting.OkayToPetBuff()
@@ -863,13 +863,13 @@ _ClassConfig      = {
             end,
         },
         {
-            name = 'Combat Pocket Pet',
+            name = 'Combat Pet Summon',
             state = 1,
             steps = 1,
-            load_cond = function() return Config:GetSetting('DoPocketPet') end,
+            load_cond = function() return Config:GetSetting('DoPocketPet') or Config:GetSetting("CombatPetSummon") end,
             targetId = function(self) return { mq.TLO.Me.ID(), } end,
             cond = function(self, combat_state)
-                return combat_state == "Combat"
+                return combat_state == "Combat" and mq.TLO.Me.Pet.ID() == 0
             end,
         },
         {
@@ -1129,7 +1129,9 @@ _ClassConfig      = {
             end
 
             if mq.TLO.FindItemCount("Malachite")() > 0 then
-                return Casting.UseSpell(resolvedPetSpell.RankName(), mq.TLO.Me.ID(), self.CombatState == "Downtime")
+                local allowMem = self.CombatState == "Downtime" or Config:GetSetting("CombatPetSummon")
+                Casting.UseSpell(resolvedPetSpell.RankName(), mq.TLO.Me.ID(), allowMem, true)
+                return true
             else
                 Logger.log_error("\ayYou don't have \agMalachite\ay. And you call yourself a mage?")
                 --Config:GetSettings().DoPet = false
@@ -1137,12 +1139,12 @@ _ClassConfig      = {
             end
         end,
         pet_management = function(self)
-            if not Config:GetSettings().DoPet or (Casting.CanUseAA("Companion's Suspension") and not Casting.AAReady("Companion's Suspension")) then
+            if not Config:GetSettings().DoPet or (Casting.CanUseAA("Suspended Minion") and not Casting.AAReady("Suspended Minion")) then
                 return false
             end
 
             -- Low Level Check - In 2 cases You're too lowlevel to Know Suspend companion and have no pet or You've Turned off Usepocket pet.
-            if mq.TLO.Me.Pet.ID() == 0 and (not Casting.CanUseAA("Companion's Suspension") or not Config:GetSetting('DoPocketPet')) then
+            if mq.TLO.Me.Pet.ID() == 0 and (not Casting.CanUseAA("Suspended Minion") or not Config:GetSetting('DoPocketPet')) then
                 if not self.ClassConfig.HelperFunctions.summon_pet(self) then
                     Logger.log_debug("\arPetManagement - Case 0 -> Summon Failed")
                     return false
@@ -1152,7 +1154,7 @@ _ClassConfig      = {
             -- Pocket Pet Stuff Begins. -  Added Check for DoPocketPet to be Positive Rather than Assuming
             if Config:GetSetting('DoPocketPet') then
                 if self.TempSettings.PocketPet and mq.TLO.Me.Pet.ID() == 0 and Targeting.GetXTHaterCount() > 0 then
-                    Casting.UseAA("Companion's Suspension", 0)
+                    Casting.UseAA("Suspended Minion", mq.TLO.Me.ID(), true)
                     self.TempSettings.PocketPet = false
                     return true
                 end
@@ -1165,7 +1167,7 @@ _ClassConfig      = {
                         return false
                     end
 
-                    if Casting.AARank("Companion's Suspension") > 2 then
+                    if Casting.AARank("Suspended Minion") > 1 then
                         -- Need to buff
                         local resolvedPetHasteSpell = self.ResolvedActionMap["PetHaste"]
                         Casting.UseSpell(resolvedPetHasteSpell.RankName(), mq.TLO.Me.Pet.ID(), true)
@@ -1174,7 +1176,7 @@ _ClassConfig      = {
                         if mq.TLO.Me.Pet.ID() then
                             self.ClassConfig.HelperFunctions.handle_pet_toys(self)
                         end
-                        Casting.UseAA("Companion's Suspension", 0)
+                        Casting.UseAA("Suspended Minion", mq.TLO.Me.ID(), true)
                         self.TempSettings.PocketPet = true
                     end
 
@@ -1184,7 +1186,7 @@ _ClassConfig      = {
             -- Case 2 - No pocket pet and pet up
             if not self.TempSettings.PocketPet and (mq.TLO.Me.Pet.ID() or 0) > 0 and Targeting.GetXTHaterCount() == 0 then
                 Logger.log_debug("\ayPetManagement - Case 2 no Pocket Pet But Pet is up - pocketing")
-                Casting.UseAA("Companion's Suspension", 0)
+                Casting.UseAA("Suspended Minion", mq.TLO.Me.ID(), true)
                 if (mq.TLO.Me.Pet.ID() or 0) == 0 then
                     if not self.ClassConfig.HelperFunctions.summon_pet(self) then
                         Logger.log_debug("\arPetManagement - Case 2 -> Summon Failed")
@@ -1264,6 +1266,17 @@ _ClassConfig      = {
     ['Rotations']         = {
         ['PetSummon'] = {
             {
+                name_func = function(self)
+                    local petSpellVar = string.format("%sPetSpell", self.ClassConfig.DefaultConfig.PetType.ComboOptions[Config:GetSetting('PetType')])
+                    return self.ResolvedActionMap[petSpellVar] or "None"
+                end,
+                type = "Spell",
+                active_cond = function(self) return mq.TLO.Me.Pet.ID() > 0 end,
+                cond = function(self)
+                    return mq.TLO.Me.Pet.ID() == 0
+                end,
+            },
+            {
                 name = "Pet Summon",
                 type = "CustomFunc",
                 active_cond = function(self)
@@ -1271,7 +1284,7 @@ _ClassConfig      = {
                 end,
                 cond = function(self)
                     if self.TempSettings.PocketPet == nil then self.TempSettings.PocketPet = false end
-                    return mq.TLO.Me.Pet.ID() == 0 and Config:GetSetting('DoPet')
+                    return mq.TLO.Me.Pet.ID() == 0
                 end,
                 custom_func = function(self) return self.ClassConfig.HelperFunctions.summon_pet(self) end,
             },
@@ -1383,13 +1396,27 @@ _ClassConfig      = {
                 end,
             },
         },
-        ['Combat Pocket Pet'] = {
+        ['Combat Pet Summon'] = { --this is where i left off. working on safeguards for changing variable to false after use
+            {
+                name = "Suspended Minion",
+                type = "AA",
+                cond = function(self, aaName)
+                    return self.TempSettings.PocketPet and mq.TLO.Me.Pet.ID() == 0 and Targeting.GetXTHaterCount() > 0
+                end,
+                post_activate = function(self, aaName, success)
+                    if success then
+                        Logger.log_info("\atPocketPet: \arNo pet while in combat! \agPulling out pocket pet")
+                        --while casting blah blah wait then if pet turn to false? not sure.
+                        self.TempSettings.PocketPet = false
+                    end
+                end,
+            },
+
+
+
             {
                 name = "Engage Pocket Pet",
                 type = "CustomFunc",
-                active_cond = function(self)
-                    return self.TempSettings.PocketPet == true and mq.TLO.Me.Pet.ID() == 0
-                end,
                 cond = function(self)
                     if self.TempSettings.PocketPet == nil then self.TempSettings.PocketPet = false end
                     return self.TempSettings.PocketPet and mq.TLO.Me.Pet.ID() == 0 and Targeting.GetXTHaterCount() > 0
@@ -1397,10 +1424,21 @@ _ClassConfig      = {
                 custom_func = function(self)
                     Logger.log_info("\atPocketPet: \arNo pet while in combat! \agPulling out pocket pet")
                     Targeting.SetTarget(mq.TLO.Me.ID())
-                    Casting.UseAA("Companion's Suspension", mq.TLO.Me.ID())
+                    Casting.UseAA("Suspended Minion", mq.TLO.Me.ID(), true)
                     self.TempSettings.PocketPet = false
 
                     return true
+                end,
+            },
+            { --Pet Spell
+                name_func = function(self)
+                    local petSpellVar = string.format("%sPetSpell", self.ClassConfig.DefaultConfig.PetType.ComboOptions[Config:GetSetting('PetType')])
+                    return self.ResolvedActionMap[petSpellVar] or "None"
+                end,
+                type = "Spell",
+                combatMem = true,
+                cond = function(self)
+                    return mq.TLO.Me.Pet.ID() == 0
                 end,
             },
         },
@@ -1911,7 +1949,7 @@ _ClassConfig      = {
         },
     },
     ['DefaultConfig']     = {
-        ['Mode']           = {
+        ['Mode']            = {
             DisplayName = "Mode",
             Category = "Combat",
             Tooltip = "Select the Combat Mode for this Toon",
@@ -1925,7 +1963,7 @@ _ClassConfig      = {
                 "PetTank mode will Focus on keeping the Pet alive as the main tank.\n" ..
                 "PBAE Mode will use PBAE spells when configured, alongside the DPS rotation.",
         },
-        ['DoPocketPet']    = {
+        ['DoPocketPet']     = {
             DisplayName = "Do Pocket Pet",
             Category = "Pet",
             Tooltip = "Pocket your pet during downtime",
@@ -1934,7 +1972,15 @@ _ClassConfig      = {
             FAQ = "I have suspend Minion AA, how do I keep a spare pet suspended?",
             Answer = "You can use the [DoPocketPet] feature to keep a spare pet suspended.",
         },
-        ['DoPetArmor']     = {
+        ['CombatPetSummon'] = {
+            DisplayName = "Combat Pet Summon",
+            Category = "Pet",
+            Tooltip = "Mem and use your pet spell during combat if no pocket pet is available (or pocket pet settings are disabled).",
+            Default = true,
+            FAQ = "Why am I memorizing a pet during combat?",
+            Answer = "You can turn off this functionality on the Pet (options) tab.",
+        },
+        ['DoPetArmor']      = {
             DisplayName = "Do Pet Armor",
             Category = "Pet",
             Tooltip = "Summon Armor for Pets",
@@ -1942,7 +1988,7 @@ _ClassConfig      = {
             FAQ = "I want to make sure my pet is always armored, how do I do that?",
             Answer = "You can use the [DoPetArmor] feature to summon pet armor.",
         },
-        ['DoPetWeapons']   = {
+        ['DoPetWeapons']    = {
             DisplayName = "Do Pet Weapons",
             Category = "Pet",
             Tooltip = "Summon Weapons for Pets",
@@ -1950,7 +1996,7 @@ _ClassConfig      = {
             FAQ = "I want to make sure my pet is always armed, how do I do that?",
             Answer = "You can use the [DoPetWeapons] feature to summon pet weapons.",
         },
-        ['PetType']        = {
+        ['PetType']         = {
             DisplayName = "Pet Type",
             Category = "Pet",
             Tooltip = "1 = Fire, 2 = Water, 3 = Earth, 4 = Air",
@@ -1962,7 +2008,7 @@ _ClassConfig      = {
             FAQ = "Can I specify the type of pet I want to use?",
             Answer = "Yes, you can select the type of pet you want to summon using the [PetType] setting.",
         },
-        ['DoPetHeirlooms'] = {
+        ['DoPetHeirlooms']  = {
             DisplayName = "Do Pet Heirlooms",
             Category = "Pet",
             Tooltip = "Summon Heirlooms for Pets",
@@ -1970,7 +2016,7 @@ _ClassConfig      = {
             FAQ = "I want to make sure my pet is always Heirloomed, how do I do that?",
             Answer = "You can use the [DoPetHeirlooms] feature to summon pet Heirlooms.",
         },
-        ['PetHealPct']     = {
+        ['PetHealPct']      = {
             DisplayName = "Pet Heal %",
             Category = "Pet",
             Tooltip = "Heal pet at [X]% HPs",
@@ -1981,7 +2027,7 @@ _ClassConfig      = {
             Answer = "You can set the [PetHealPct] to a lower value to heal your pet sooner.\n" ..
                 "Also make sure that [DoPetHeals] is enabled.",
         },
-        ['SummonModRods']  = {
+        ['SummonModRods']   = {
             DisplayName = "Summon Mod Rods",
             Category = "Mana",
             Index = 1,
@@ -1990,7 +2036,7 @@ _ClassConfig      = {
             FAQ = "Can I summon mod rods for my group?",
             Answer = "Yes, you can summon mod rods for your group by setting the [SummonModRods] setting.",
         },
-        ['DoForce']        = {
+        ['DoForce']         = {
             DisplayName = "Do Force",
             Category = "Spells and Abilities",
             Tooltip = "Use Force of Elements AA",
@@ -1998,7 +2044,7 @@ _ClassConfig      = {
             FAQ = "I want to use Force of Elements AA in my rotation, how do I do that?",
             Answer = "You can use the [DoForce] feature to use the Force of Elements AA in your rotation.",
         },
-        ['ElementChoice']  = {
+        ['ElementChoice']   = {
             DisplayName = "Element Choice:",
             Category = "DPS Low Level",
             Index = 1,
@@ -2012,7 +2058,7 @@ _ClassConfig      = {
             FAQ = "I'm fighting fire-resistant mobs, how can I use my magic nukes?",
             Answer = "If you are under level 70, you can swap to magic nukes on the DPS Low Level tab.",
         },
-        ['DoSwarmPet']     = {
+        ['DoSwarmPet']      = {
             DisplayName = "Swarm Pet Spell:",
             Category = "Spells and Abilities",
             Tooltip = "Choose the conditions to cast your Swarm Pet Spell.",
@@ -2025,7 +2071,7 @@ _ClassConfig      = {
             FAQ = "Why am I not using my swarmp pet?",
             Answer = "Do to mana constraints with fresh level 70's, the swarm pet will only be used on named by default. You can change this in the options.",
         },
-        ['AISelfDelay']    = {
+        ['AISelfDelay']     = {
             DisplayName = "Autoinv Delay (Self)",
             Category = "Utilities",
             Tooltip = "Delay in ms before /autoinventory after summoning, adjust if you notice items left on cursors regularly.",
@@ -2036,7 +2082,7 @@ _ClassConfig      = {
             Answer = "You can adjust the delay before autoinventory by setting the [AISelfDelay] setting.\n" ..
                 "Increase the delay if you notice items left on cursors regularly.",
         },
-        ['AIGroupDelay']   = {
+        ['AIGroupDelay']    = {
             DisplayName = "Autoinv Delay (Group)",
             Category = "Utilities",
             Tooltip = "Delay in ms before /autoinventory after summoning, adjust if you notice items left on cursors regularly.",
@@ -2047,7 +2093,7 @@ _ClassConfig      = {
             Answer = "You can adjust the delay before autoinventory by setting the [AIGroupDelay] setting.\n" ..
                 "Increase the delay if you notice items left on cursors regularly.",
         },
-        ['DoMalo']         = {
+        ['DoMalo']          = {
             DisplayName = "Cast Malo",
             Category = "Debuffs",
             Tooltip = "Do Malo Spells/AAs",
@@ -2056,7 +2102,7 @@ _ClassConfig      = {
             FAQ = "I want to use Malo in my rotation, how do I do that?",
             Answer = "You can use the [DoMalo] feature to use Malo in your rotation.",
         },
-        ['DoAEMalo']       = {
+        ['DoAEMalo']        = {
             DisplayName = "Cast AE Malo",
             Category = "Debuffs",
             Tooltip = "Do AE Malo Spells/AAs",
@@ -2064,7 +2110,7 @@ _ClassConfig      = {
             FAQ = "I want to use AE Malo in my rotation, how do I do that?",
             Answer = "You can use the [DoAEMalo] feature to use AE Malo in your rotation.",
         },
-        ['CombatModRod']   = {
+        ['CombatModRod']    = {
             DisplayName = "Combat Mod Rods",
             Category = "Mana",
             Index = 2,
@@ -2075,7 +2121,7 @@ _ClassConfig      = {
             Answer = "Yes, you can summon mod rods in combat by setting the [CombatModRod] setting.\n" ..
                 "Otherwise we will only summon them during Downtime.",
         },
-        ['GroupManaPct']   = {
+        ['GroupManaPct']    = {
             DisplayName = "Combat ModRod %",
             Category = "Mana",
             Index = 3,
@@ -2089,7 +2135,7 @@ _ClassConfig      = {
                 "Also Make sure you have the [CombatModRod] setting enabled if you want to resummon them during combat.\n" ..
                 "Finally make sure you have the [SummonModRods] setting enabled.",
         },
-        ['GroupManaCt']    = {
+        ['GroupManaCt']     = {
             DisplayName = "Combat ModRod Count",
             Category = "Mana",
             Index = 4,
@@ -2104,7 +2150,7 @@ _ClassConfig      = {
                 "Also Make sure you have the [CombatModRod] setting enabled if you want to resummon them during combat.\n" ..
                 "Finally make sure you have the [SummonModRods] setting enabled.",
         },
-        ['DoArcanumWeave'] = {
+        ['DoArcanumWeave']  = {
             DisplayName = "Weave Arcanums",
             Category = "Spells and Abilities",
             Tooltip = "Weave Empowered/Enlighted/Acute Focus of Arcanum into your standard combat routine (Focus of Arcanum is saved for burns).",
@@ -2116,7 +2162,7 @@ _ClassConfig      = {
         },
 
         --Damage (AE)
-        ['DoAEDamage']     = {
+        ['DoAEDamage']      = {
             DisplayName = "Do AE Damage",
             Category = "Damage (PBAE)",
             Index = 1,
@@ -2126,7 +2172,7 @@ _ClassConfig      = {
             FAQ = "Why am I using AE damage when there are mezzed mobs around?",
             Answer = "It is not currently possible to properly determine Mez status without direct Targeting. If you are mezzing, consider turning this option off.",
         },
-        ['PBAETargetCnt']  = {
+        ['PBAETargetCnt']   = {
             DisplayName = "PBAE Tgt Cnt",
             Category = "Damage (PBAE)",
             Index = 5,
@@ -2138,7 +2184,7 @@ _ClassConfig      = {
             Answer =
             "You can adjust the PB Target Count to control when you will use actions PBAE Spells such as the of Flame line.",
         },
-        ['MaxAETargetCnt'] = {
+        ['MaxAETargetCnt']  = {
             DisplayName = "Max AE Targets",
             Category = "Damage (PBAE)",
             Index = 6,
@@ -2151,7 +2197,7 @@ _ClassConfig      = {
             Answer =
             "By limiting your max AE targets, you can set an AE Mez count that is slightly higher, to allow for the possiblity of mezzing if you are being overwhelmed.",
         },
-        ['SafeAEDamage']   = {
+        ['SafeAEDamage']    = {
             DisplayName = "AE Proximity Check",
             Category = "Damage (PBAE)",
             Index = 7,
