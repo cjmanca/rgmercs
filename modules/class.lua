@@ -758,6 +758,7 @@ function Module:RunCureRotation()
         { type = "Curse",      check = "Me.Cursed.ID", },
         { type = "Corruption", check = "Me.Corrupted.ID", },
         { type = "Mezzed",     check = "Me.Mezzed.ID", },
+        { type = "Charmed",    check = "Me.Charmed.ID", },
     }
 
     -- Me.TotalCounters does not work on emu we need to check everything.
@@ -766,7 +767,7 @@ function Module:RunCureRotation()
         ---@diagnostic disable-next-line: redundant-parameter
         local peer = mq.TLO.DanNet.Peers(i)()
         if peer and peer:len() > 0 then
-            if mq.TLO.SpawnCount(string.format("pc =%s radius 150", peer))() == 1 then
+            if mq.TLO.Group.Member(peer)() and mq.TLO.SpawnCount(string.format("pc =%s radius 100", peer))() == 1 then
                 Logger.log_verbose("\ag[Cures] %s is in range - checking for curables", peer)
                 for _, data in ipairs(checks) do
                     local effectId = DanNet.query(peer, data.check, 1000) or "null"
