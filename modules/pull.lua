@@ -115,20 +115,33 @@ Module.Constants.PullAbilities         = {
         end,
     },
     {
-        id = "Ranged",
+        id = "Archery",
         Type = "Special",
-        DisplayName = "Ranged",
+        DisplayName = "Archery",
         AbilityRange = function()
-            local range = mq.TLO.Me.Inventory("ranged").Range() or 0
-            if mq.TLO.Me.Inventory("ranged").Type() == 'Archery' or mq.TLO.Me.Inventory("ranged").Type() == 'Bow' then
-                range = range + (mq.TLO.Me.Inventory("ammo").Range() or 0)
-            end
-            return range
+            local ranged = mq.TLO.Me.Inventory("ranged").Range() or 0
+            local ammo = (mq.TLO.Me.Inventory("ranged").Type() == 'Archery' or mq.TLO.Me.Inventory("ranged").Type() == 'Bow') and mq.TLO.Me.Inventory("ammo").Range() or 0
+            return ranged + ammo
         end,
         cond = function(self)
             local rangedType = (mq.TLO.Me.Inventory("ranged").Type() or ""):lower()
-            local rangedTypes = Set.new({ "archery", "bow", "throwingv1", "throwing", "throwingv2", "ammo", })
-            return rangedTypes:contains(rangedType)
+            local ammoType = (mq.TLO.Me.Inventory("ammo").Type() or ""):lower()
+            local types = Set.new({ "archery", "bow", })
+            return types:contains(rangedType) and types:contains(ammoType)
+        end,
+    },
+    {
+        id = "Throwing",
+        Type = "Special",
+        DisplayName = "Throwing",
+        AbilityRange = function()
+            return (mq.TLO.Me.Inventory("ranged").Range() or mq.TLO.Me.Inventory("ammo").Range()) or 0
+        end,
+        cond = function(self)
+            local rangedType = (mq.TLO.Me.Inventory("ranged").Type() or ""):lower()
+            local ammoType = (mq.TLO.Me.Inventory("ammo").Type() or ""):lower()
+            local types = Set.new({ "throwingv1", "throwing", "throwingv2", "ammo", })
+            return types:contains(rangedType or ammoType)
         end,
     },
     {
@@ -2119,7 +2132,7 @@ function Module:GiveTime(combat_state)
                     end
                     mq.delay(10)
                 end
-            elseif self.settings.PullAbility == PullAbilityIDToName.Ranged then -- Ranged pull
+            elseif self.settings.PullAbility == (PullAbilityIDToName.Archery or PullAbilityIDToName.Throwing) then -- Ranged pull
                 -- Make sure we're looking straight ahead at our mob and delay
                 -- until we're facing them.
                 Core.DoCmd("/look 0")
