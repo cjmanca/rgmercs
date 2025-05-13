@@ -120,7 +120,7 @@ Module.Constants.PullAbilities         = {
         DisplayName = "Archery",
         AbilityRange = function()
             local ranged = mq.TLO.Me.Inventory("ranged").Range() or 0
-            local ammo = (mq.TLO.Me.Inventory("ranged").Type() == 'Archery' or mq.TLO.Me.Inventory("ranged").Type() == 'Bow') and mq.TLO.Me.Inventory("ammo").Range() or 0
+            local ammo = (mq.TLO.Me.Inventory("ranged").Type() == 'Arrow' or mq.TLO.Me.Inventory("ranged").Type() == 'Archery') and mq.TLO.Me.Inventory("ammo").Range() or 0
             return ranged + ammo
         end,
         cond = function(self)
