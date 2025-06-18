@@ -410,39 +410,54 @@ function Module:MezNow(mezId, useAE, useAA)
     if useAE then
         if not aeMezSpell or not aeMezSpell() then return end
         Logger.log_debug("Performing AE MEZ --> %d", mezId)
-        -- Only Enchanters have an AA AE Mez but we'll prefer the AE Spell if we can.
-        -- TODO CHECK IF ITS READY
-        if useAA and Core.MyClassIs("enc") and
-            not Casting.SpellReady(aeMezSpell) and
-            Casting.AAReady("Beam of Slumber") and self.settings.DoAAMez then
-            -- This is a beam AE so I need ot face the target and  cast.
-            Core.DoCmd("/face fast")
-            -- Delay to wait till face finishes
-            mq.delay(5)
-            Comms.HandleAnnounce(string.format("\aw I AM \ar AE AA MEZZING \ag Beam of Slumber"), Config:GetSetting('MezAnnounceGroup'),
-                Config:GetSetting('MezAnnounce'))
-            Casting.UseAA("Beam of Slumber", mezId)
-            Comms.HandleAnnounce(string.format("\aw I JUST CAST \ar AE AA MEZ \ag Beam of Slumber"), Config:GetSetting('MezAnnounceGroup'),
-                Config:GetSetting('MezAnnounce'))
-            -- reset timers
-        elseif Casting.SpellReady(aeMezSpell) then
-            -- If we're here we're not doing AA-based AE Mezzing. We're either using our bard song or
-            -- ENCH/NEC Spell
-            Comms.HandleAnnounce(string.format("\aw I AM \ar AE SPELL MEZZING \ag %s", aeMezSpell.RankName()), Config:GetSetting('MezAnnounceGroup'),
-                Config:GetSetting('MezAnnounce'))
-            -- Added this If to avoid rewriting SpellNow to be bard friendly.
-            -- we can just invoke The bard SongNow which already accounts for all the weird bard stuff
-            -- Setting the recast time for the bard ae song after cast.
-            -- TODO: Make spell now use songnow for brds
-            if Core.MyClassIs("brd") then
-                Casting.UseSong(aeMezSpell.RankName(), mezId, false, 3)
-            else
-                Casting.UseSpell(aeMezSpell.RankName(), mezId, false)
-            end
-            Comms.HandleAnnounce(string.format("\aw I JUST CAST \ar AE SPELL MEZ \ag %s", aeMezSpell.RankName()), Config:GetSetting('MezAnnounceGroup'),
-                Config:GetSetting('MezAnnounce'))
-        end
 
+        if not Casting.SpellReady(aeMezSpell) then
+            -- previous code checked for the enchanter class, but AAready will simply return false on any other class
+            -- lets only try to use beam of slumber if we are in global, since a beam may not catch everything.
+            if useAA and self.settings.DoAAMez and Casting.AAReady("Beam of Slumber") then
+                -- This is a beam AE so I need ot face the target and cast.
+                Core.DoCmd("/face fast")
+                -- Delay to wait till face finishes
+                mq.delay(5)
+                Comms.HandleAnnounce(string.format("\aw I AM \ar AE AA MEZZING \ag Beam of Slumber"), Config:GetSetting('MezAnnounceGroup'),
+                    Config:GetSetting('MezAnnounce'))
+                Casting.UseAA("Beam of Slumber", mezId)
+                Comms.HandleAnnounce(string.format("\aw I JUST CAST \ar AE AA MEZ \ag Beam of Slumber"), Config:GetSetting('MezAnnounceGroup'),
+                    Config:GetSetting('MezAnnounce'))
+                mq.doevents()
+                return
+            elseif (mq.TLO.Me.GemTimer(aeMezSpell)() or -1) == 0 then
+                local maxWaitToMez = 1500 + (mq.TLO.Window("CastingWindow").Open() and (mq.TLO.Me.Casting.MyCastTime() or 3000) or 0)
+                while maxWaitToMez > 0 do
+                    Logger.log_verbose("MEZ: Waiting for cast to finish to use AE Mez.")
+                    if Casting.SpellReady(aeMezSpell) then
+                        break
+                    end
+                    mq.delay(50)
+                    mq.doevents()
+                    maxWaitToMez = maxWaitToMez - 50
+                end
+                if maxWaitToMez <= 0 and not Casting.SpellReady(aeMezSpell) then
+                    Logger.log_verbose("Mez: Timeout while waiting to use AE Mez (%s).", aeMezSpell)
+                    return
+                end
+            else
+                Logger.log_verbose("Mez: Our AEMez Spell (%s) or AA does not appear to be ready.", aeMezSpell)
+            end
+
+            if Casting.SpellReady(aeMezSpell) then
+                Comms.HandleAnnounce(string.format("\aw I AM \ar AE SPELL MEZZING \ag %s", aeMezSpell.RankName()), Config:GetSetting('MezAnnounceGroup'),
+                    Config:GetSetting('MezAnnounce'))
+
+                if Core.MyClassIs("brd") then
+                    Casting.UseSong(aeMezSpell.RankName(), mezId, false, 3)
+                else
+                    Casting.UseSpell(aeMezSpell.RankName(), mezId, false)
+                end
+                Comms.HandleAnnounce(string.format("\aw I JUST CAST \ar AE SPELL MEZ \ag %s", aeMezSpell.RankName()), Config:GetSetting('MezAnnounceGroup'),
+                    Config:GetSetting('MezAnnounce'))
+            end
+        end
         -- In case they're mez immune
         mq.doevents()
     else
@@ -474,9 +489,26 @@ function Module:MezNow(mezId, useAE, useAA)
 
         if not mezSpell or not mezSpell() then return end
 
-        -- Added this If to avoid rewriting SpellNow to be bard friendly.
-        -- we can just invoke The bard SongNow which already accounts for all the weird bard stuff
-        -- TODO: Make spell now use songnow for brds
+        if not Casting.SpellReady(mezSpell) then
+            if (mq.TLO.Me.GemTimer(mezSpell)() or -1) == 0 then
+                local maxWaitToMez = 1500 + (mq.TLO.Window("CastingWindow").Open() and (mq.TLO.Me.Casting.MyCastTime() or 3000) or 0)
+                while maxWaitToMez > 0 do
+                    Logger.log_verbose("MEZ: Waiting for cast to finish to use AE Mez.")
+                    if Casting.SpellReady(aeMezSpell) then
+                        break
+                    end
+                    mq.delay(50)
+                    mq.doevents()
+                    maxWaitToMez = maxWaitToMez - 50
+                end
+                if maxWaitToMez <= 0 and not Casting.SpellReady(mezSpell) then
+                    Logger.log_verbose("Mez: Timeout while waiting to use ST Mez (%s).", mezSpell)
+                end
+            else
+                Logger.log_verbose("Mez: Our ST Mez Spell (%s) does not appear to be ready.", mezSpell)
+            end
+        end
+
         if Casting.SpellReady(mezSpell) then
             if Core.MyClassIs("brd") then
                 -- TODO SongNow MezSpell
